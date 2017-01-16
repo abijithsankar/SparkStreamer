@@ -8,51 +8,48 @@ import org.apache.spark.streaming.StreamingContext._
 import Utilities._
 
 /** Listens to a stream of Tweets and keeps track of the most popular
- *  hashtags over a 5 minute window.
+ *  hashtags over a given time window.
  */
 object PopularHashtags {
   
-  /** Our main function where the action happens */
+  
   def main(args: Array[String]) {
 
     // Configure Twitter credentials using twitter.txt
     setupTwitter()
     
-    // Set up a Spark streaming context named "PopularHashtags" that runs locally using
-    // all CPU cores and one-second batches of data
+    // Setting up the spark streaming context to stream tweets
     val ssc = new StreamingContext("local[*]", "PopularHashtags", Seconds(1))
     
-    // Get rid of log spam (should be called after the context is set up)
+    // logging spams are handled in utilities file
     setupLogging()
 
-    // Create a DStream from Twitter using our streaming context
+    // Creating Dstream for the incoming tweets
     val tweets = TwitterUtils.createStream(ssc, None)
     
-    // Now extract the text of each status update into DStreams using map()
+    // Extracting the tweets
     val statuses = tweets.map(status => status.getText())
     
-    // Blow out each word into a new DStream
+    // Converting tweets to words and filters the hashtagged words alone
     val tweetwords = statuses.flatMap(tweetText => tweetText.split(" "))
     
-    // Now eliminate anything that's not a hashtag
+    
     val hashtags = tweetwords.filter(word => word.startsWith("#"))
     
-    // Map each hashtag to a key/value pair of (hashtag, 1) so we can count them up by adding up the values
+    // Performing mapreduce to count the occurance of each hashtagged word
     val hashtagKeyValues = hashtags.map(hashtag => (hashtag, 1))
     
-    // Now count them up over a 5 minute window sliding every one second
-    val hashtagCounts = hashtagKeyValues.reduceByKeyAndWindow( (x,y) => x + y, (x,y) => x - y, Seconds(300), Seconds(1))
-    //  You will often see this written in the following shorthand:
-    //val hashtagCounts = hashtagKeyValues.reduceByKeyAndWindow( _ + _, _ -_, Seconds(300), Seconds(150))
     
-    // Sort the results by the count values
+    val hashtagCounts = hashtagKeyValues.reduceByKeyAndWindow( (x,y) => x + y, (x,y) => x - y, Seconds(300), Seconds(1))
+  
+    
+    // Sorting the results by the count values and is printed
     val sortedResults = hashtagCounts.transform(rdd => rdd.sortBy(x => x._2, false))
     
-    // Print the top 10
+    
     sortedResults.print
     
-    // Set a checkpoint directory, and kick it all off
-    // I could watch this all day!
+    // Setting up the check point fdirectory to check anytime of the day
     ssc.checkpoint("C:/checkpoint/")
     ssc.start()
     ssc.awaitTermination()
